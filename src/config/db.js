@@ -45,21 +45,35 @@
 
 
 
-
 const fs = require("fs");
 const mysql = require("mysql2/promise");
+require("dotenv").config();
 
-// Handle SSL configuration for TiDB Cloud
+// SSL configuration for TiDB Cloud
 let ssl;
+
 if (process.env.DB_SSL_CA && process.env.DB_SSL_CA.trim() !== "") {
-  // If you provide a CA file path in DB_SSL_CA, load it
-  ssl = { ca: fs.readFileSync(process.env.DB_SSL_CA, "utf8") };
+  try {
+    ssl = {
+      ca: fs.readFileSync(process.env.DB_SSL_CA, "utf8"),
+    };
+  } catch (err) {
+    console.warn("⚠️ Could not read DB_SSL_CA file, using default SSL.");
+    ssl = { rejectUnauthorized: true };
+  }
 } else {
-  // Otherwise, just enable SSL with default settings
   ssl = { rejectUnauthorized: true };
 }
 
-// Create MySQL connection pool
+// Validate required environment variables
+const requiredEnv = ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME", "JWT_SECRET"];
+requiredEnv.forEach((env) => {
+  if (!process.env[env]) {
+    console.warn(`⚠️ Environment variable ${env} is not set`);
+  }
+});
+
+// Create MySQL pool
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT || 4000),
@@ -70,7 +84,7 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  connectTimeout: 10000 // 10 seconds
+  connectTimeout: 10000,
 });
 
 // Query helper
@@ -82,7 +96,7 @@ async function query(sql, params = []) {
     console.error("Database query error:", {
       message: error.message,
       code: error.code,
-      sql: sql.substring(0, 100)
+      sql: sql.substring(0, 100),
     });
     throw error;
   }
@@ -91,6 +105,5 @@ async function query(sql, params = []) {
 module.exports = {
   pool,
   query,
-  jwtSecret: process.env.JWT_SECRET // ✅ Use JWT_SECRET directly as a string
+  jwtSecret: process.env.JWT_SECRET,
 };
-
