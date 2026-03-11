@@ -61,6 +61,9 @@ router.delete('/news/:id', adminController.deleteNews);
 router.get('/subscribers', adminController.getSubscribers);
 router.delete('/subscribers/:id', adminController.deleteSubscriber);
 
+// Newsletter
+router.post('/newsletter/send', adminController.sendNewsletter);
+
 // Contact Messages
 router.get('/contacts', adminController.getContacts);
 router.delete('/contacts/:id', adminController.deleteContact);

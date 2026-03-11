@@ -374,6 +374,78 @@ async function deleteSubscriber(req, res, next) {
   }
 }
 
+// Newsletter
+async function sendNewsletter(req, res, next) {
+  try {
+    const { subject, message, html, testEmail } = req.body || {};
+    if (!subject || (!message && !html)) {
+      return res.status(400).json({ error: "subject and message/html are required" });
+    }
+
+    const SMTP_HOST = process.env.SMTP_HOST;
+    const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
+    const SMTP_USER = process.env.SMTP_USER;
+    const SMTP_PASS = process.env.SMTP_PASS;
+    const SMTP_FROM = process.env.SMTP_FROM || SMTP_USER;
+
+    if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+      return res.status(400).json({
+        error:
+          "Email provider not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM on the backend.",
+      });
+    }
+
+    const nodemailer = require("nodemailer");
+    const secure = SMTP_PORT === 465;
+    const transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+    });
+
+    const toSendHtml = html || `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap">${String(message || "").replace(/</g, "&lt;")}</pre>`;
+    const toSendText = message || "";
+
+    const rows = testEmail
+      ? [{ email: String(testEmail).trim().toLowerCase() }]
+      : await query(
+          "SELECT email FROM subscribers WHERE (status = 'active' OR status IS NULL) AND email IS NOT NULL"
+        );
+
+    const emails = rows
+      .map((r) => (r && r.email ? String(r.email).trim().toLowerCase() : ""))
+      .filter(Boolean);
+
+    if (emails.length === 0) {
+      return res.status(400).json({ error: "No active subscribers to send to" });
+    }
+
+    const chunkSize = 50;
+    const chunks = [];
+    for (let i = 0; i < emails.length; i += chunkSize) {
+      chunks.push(emails.slice(i, i + chunkSize));
+    }
+
+    let sentCount = 0;
+    for (const chunk of chunks) {
+      await transporter.sendMail({
+        from: SMTP_FROM,
+        to: SMTP_FROM,
+        bcc: chunk,
+        subject: String(subject),
+        text: toSendText,
+        html: toSendHtml,
+      });
+      sentCount += chunk.length;
+    }
+
+    return res.json({ success: true, sent: sentCount, testEmail: !!testEmail });
+  } catch (err) {
+    return next(err);
+  }
+}
+
 // Contacts
 async function getContacts(req, res, next) {
   try {
@@ -436,6 +508,7 @@ module.exports = {
   deleteNews,
   getSubscribers,
   deleteSubscriber,
+  sendNewsletter,
   getContacts,
   deleteContact,
   uploadFile
